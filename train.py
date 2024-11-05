@@ -3,10 +3,10 @@ import os
 import logging
 import numpy as np
 import torch
-from pytorch_lightning import Trainer
+from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from model import MyVAE
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import WandbLogger
 import argparse
 
 SEED = 8
@@ -14,7 +14,7 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 np.random.seed(SEED)
 
-logger = TensorBoardLogger(name="logs", save_dir="./")
+logger = WandbLogger(name="FCVAE", save_dir="./")
 
 
 def main(hparams):
@@ -35,7 +35,7 @@ def main(hparams):
         callbacks=[early_stop, checkpoint],
         logger=logger,
         accelerator="gpu",
-        gpus=[hparams.gpu],
+        devices=[hparams.gpu],
         check_val_every_n_epoch=1,
         gradient_clip_algorithm="value",
         gradient_clip_val=2,
@@ -45,9 +45,6 @@ def main(hparams):
     val_loader = model.mydataloader("valid")
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
     trainer.test(model, dataloaders=model.mydataloader("test"))
-    print("View tensorboard logs by running\ntensorboard --logdir %s" % os.getcwd())
-    print("and going to http://localhost:6006 on your browser")
-
 
 if __name__ == "__main__":
     parser = MyVAE.add_model_specific_args()

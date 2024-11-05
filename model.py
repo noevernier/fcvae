@@ -1,5 +1,5 @@
 from pytorch_lightning import LightningModule
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, DistributedSampler
 from CVAE import CVAE
 from dataset import UniDataset
 import argparse
@@ -25,6 +25,8 @@ class MyVAE(LightningModule):
         self.save_hyperparameters()
         self.hp = hparams
         self.__build_model()
+        self.test_step_outputs = []
+        self.validation_step_outputs = []
 
     def __build_model(self):
         self.vae = CVAE(self.hp)
@@ -76,12 +78,18 @@ class MyVAE(LightningModule):
         if self.trainer.strategy == "dp":
             loss_val = loss_val.unsqueeze(0)
         self.log("val_loss_valid", loss_val, on_step=True, on_epoch=True, logger=True)
+        self.validation_step_outputs.append(loss_val)
         output = OrderedDict(
             {
                 "loss": loss_val,
             }
         )
         return output
+
+    def on_validation_epoch_end(self):
+        epoch_average = torch.stack(self.validation_step_outputs).mean()
+        self.log("validation_epoch_average", epoch_average)
+        self.validation_step_outputs.clear()  # free memory
 
     def test_step(self, data_batch, batch_idx):
         x, y_all, z_all = data_batch
@@ -101,15 +109,16 @@ class MyVAE(LightningModule):
                 "var_x": var_x[:, :, -1].cpu(),
             }
         )
+        self.test_step_outputs.append(output)
         return output
 
-    def test_epoch_end(self, outputs):
-        y = torch.cat(([x["y"] for x in outputs]), 0)
-        recon_prob = torch.cat(([x["recon_prob"] for x in outputs]), 0)
-        x = torch.cat(([x["x"] for x in outputs]), 0)
-        mu_x = torch.cat(([x["mu_x"] for x in outputs]), 0)
-        mu_x_test = torch.cat(([x["mu_x_test"] for x in outputs]), 0)
-        var_x = torch.cat(([x["var_x"] for x in outputs]), 0)
+    def on_test_epoch_end(self):
+        y = torch.cat(([x["y"] for x in self.test_step_outputs]), 0)
+        recon_prob = torch.cat(([x["recon_prob"] for x in self.test_step_outputs]), 0)
+        x = torch.cat(([x["x"] for x in self.test_step_outputs]), 0)
+        mu_x = torch.cat(([x["mu_x"] for x in self.test_step_outputs]), 0)
+        mu_x_test = torch.cat(([x["mu_x_test"] for x in self.test_step_outputs]), 0)
+        var_x = torch.cat(([x["var_x"] for x in self.test_step_outputs]), 0)
         score = -1 * recon_prob.squeeze(1).cpu().numpy()
         label = y.squeeze(1).cpu().numpy()
         df = pd.DataFrame()
@@ -158,6 +167,8 @@ class MyVAE(LightningModule):
                     best_recall_,
                 )
             )
+        self.test_step_outputs.clear()  # free memory
+
 
     def mydataloader(self, mode):
         dataset = UniDataset(

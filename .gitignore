@@ -5,3 +5,5 @@
 /.vscode/
 /git.sh
 /result.txt
+.venv
+wandb
