@@ -192,14 +192,14 @@ class CVAE(nn.Module):
         input = input.squeeze(1)
         recon_loss = torch.mean(
             0.5
-            * torch.mean(y * (torch.log(var_x) + (input - mu_x) ** 2 / var_x), dim=1),
+            * torch.mean(torch.log(torch.tensor(2*torch.pi)) + (torch.log(var_x) + (input - mu_x) ** 2 / var_x), dim=1),
             dim=0,
         )
         m = (torch.sum(y, dim=1, keepdim=True) / self.hp.window).repeat(
             1, self.hp.latent_dim
         )
         kld_loss = torch.mean(
-            0.5 * torch.mean(m * (z**2) - torch.log(var) - (z - mu) ** 2 / var, dim=1),
+            0.5 * torch.mean((m-1)*torch.log(torch.tensor(2*torch.pi)) + m * (z**2) - torch.log(var) - (z - mu) ** 2 / var, dim=1),
             dim=0,
         )
         if self.loss_type == "B":
